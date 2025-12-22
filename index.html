@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <meta name="theme-color" content="#000000" />
+    <title>Rimba Tycoon 3D</title>
+
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="assets/kapak.png" />
+    <link rel="icon" type="image/png" href="assets/kapak.png" />
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="copyright-footer">© RIYAN 2025 | ALL RIGHTS RESERVED</div>
+
+    <audio id="bgm" loop>
+      <source src="sfx/backsound.mp3" type="audio/mpeg" />
+    </audio>
+    <audio id="sfx-chop">
+      <source src="sfx/tebang.mp3" type="audio/mpeg" />
+    </audio>
+    <audio id="sfx-jump">
+      <source src="sfx/lompat.mp3" type="audio/mpeg" />
+    </audio>
+    <audio id="sfx-step" loop>
+      <source src="sfx/lari.mp3" type="audio/mpeg" />
+    </audio>
+    <audio id="sfx-coin"><source src="sfx/koin.mp3" type="audio/mpeg" /></audio>
+    <audio id="sfx-fail">
+      <source src="sfx/gagalcoin.mp3" type="audio/mpeg" />
+    </audio>
+
+    <div id="loading" class="hidden">
+      <div class="text-6xl mb-4 animate-bounce">🌲</div>
+      <h2 class="text-2xl font-black text-green-400 tracking-wider">
+        MEMUAT HUTAN...
+      </h2>
+      <p class="text-xs text-gray-500 mt-2">Menyiapkan aset 3D</p>
+    </div>
+
+    <div id="start-screen">
+      <div class="mb-2 text-center">
+        <span class="text-6xl title-icon filter drop-shadow-lg">🪓</span>
+      </div>
+      <h1
+        class="text-5xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-green-300 via-yellow-200 to-green-500 mb-2 tracking-tighter drop-shadow-2xl text-center"
+        style="
+          -webkit-text-stroke: 1.5px #064e3b;
+          filter: drop-shadow(0 0 15px rgba(34, 197, 94, 0.4));
+        "
+      >
+        RIMBA<br />TYCOON 3D
+      </h1>
+      <p
+        class="text-green-200 mb-10 text-xs tracking-[0.3em] uppercase font-bold border-b border-green-500/30 pb-2"
+      >
+        Simulasi Penebang & Bisnis Kayu
+      </p>
+
+      <div id="start-buttons" class="flex flex-col items-center">
+        <button
+          id="btn-continue"
+          onclick="continueGame()"
+          class="start-btn hidden"
+        >
+          LANJUTKAN
+        </button>
+        <button onclick="startGame()" class="start-btn">MULAI BARU</button>
+      </div>
+      <p class="mt-8 text-xs text-gray-500 opacity-60">v2.6 Mobile Optimized</p>
+    </div>
+
+    <div id="game-ui" class="hidden">
+      <div class="fixed top-4 left-4 z-20 pointer-events-none">
+        <div class="ui-glass px-4 py-2 flex flex-col items-start">
+          <h2
+            id="clock-display"
+            class="text-xl font-black leading-none text-white"
+          >
+            00:00
+          </h2>
+          <p
+            class="text-[10px] font-bold text-yellow-300 uppercase tracking-widest mt-1"
+          >
+            WIB
+          </p>
+        </div>
+      </div>
+
+      <div
+        class="fixed top-4 right-4 z-20 flex flex-col items-end gap-1 pointer-events-none"
+      >
+        <div style="pointer-events: auto">
+          <button onclick="openSettings()" class="btn-menu shadow-lg">
+            <i class="fa-solid fa-gear"></i>
+          </button>
+        </div>
+        <div id="minimap" class="mt-2"></div>
+      </div>
+
+      <div
+        class="fixed top-24 left-4 z-20 flex flex-col gap-2 pointer-events-none"
+      >
+        <div class="ui-glass px-3 py-1 flex items-center gap-3 w-max">
+          <span class="text-2xl drop-shadow-lg">🪵</span>
+          <div>
+            <p class="text-[8px] font-bold text-gray-300 uppercase">Kayu</p>
+            <h2 id="wood-val" class="text-xl font-black">0</h2>
+          </div>
+        </div>
+        <div class="ui-glass px-3 py-1 flex items-center gap-3 w-max">
+          <span class="text-2xl drop-shadow-lg">💰</span>
+          <div>
+            <p class="text-[8px] font-bold text-gray-300 uppercase">Koin</p>
+            <h2 id="coin-val" class="text-xl font-black text-yellow-400">0</h2>
+          </div>
+        </div>
+      </div>
+
+      <div class="stamina-container ui-glass">
+        <div class="flex items-center gap-2 mb-1">
+          <i class="fa-solid fa-bolt text-yellow-400 text-xs"></i>
+          <span
+            class="text-[10px] font-bold text-white uppercase tracking-widest"
+            >Stamina</span
+          >
+          <span
+            id="stamina-text"
+            class="text-[10px] font-bold text-yellow-200 ml-auto"
+            >100/100</span
+          >
+        </div>
+        <div class="status-bar-bg">
+          <div id="stamina-bar" class="stamina-fill"></div>
+        </div>
+      </div>
+
+      <div id="joystick-wrapper">
+        <div id="joystick-base"><div id="joystick-stick"></div></div>
+      </div>
+
+      <div class="nav-controls">
+        <button id="run-btn" class="btn-game btn-run">
+          <i class="fa-solid fa-wind text-xl"></i>
+        </button>
+        <button id="jump-btn" class="btn-game btn-jump" onclick="jump()">
+          <i class="fa-solid fa-arrow-up text-xl"></i>
+        </button>
+      </div>
+
+      <button id="action-btn" class="btn-action hidden">🪓</button>
+      <button id="sleep-btn" class="btn-action btn-sleep hidden">💤</button>
+
+      <div id="tree-hp-container"><div id="tree-hp-bar"></div></div>
+    </div>
+
+    <div
+      id="damage-container"
+      class="fixed inset-0 pointer-events-none z-30"
+    ></div>
+    <div id="toast-container"></div>
+
+    <div id="settings-modal" class="modal-overlay hidden">
+      <div class="modal-content border-4 border-gray-200">
+        <div class="flex justify-between items-center mb-4 border-b pb-3">
+          <h2
+            class="text-xl font-black text-gray-800 uppercase tracking-wider m-0"
+          >
+            <i class="fa-solid fa-sliders mr-2"></i>Pengaturan
+          </h2>
+        </div>
+        <div class="slider-container">
+          <div class="flex justify-between items-center mb-1">
+            <label class="slider-label mb-0">MUSIK (BGM)</label>
+            <button
+              id="btn-mute-bgm"
+              onclick="toggleBGM()"
+              class="text-xs font-bold text-gray-600 hover:text-blue-500 flex items-center gap-1"
+            >
+              <i class="fa-solid fa-volume-high"></i> ON
+            </button>
+          </div>
+          <input
+            id="bgm-slider"
+            type="range"
+            min="0"
+            max="1"
+            step="0.1"
+            value="0.4"
+            class="custom-range"
+            oninput="setBGMVolume(this.value)"
+          />
+        </div>
+        <div class="slider-container mb-6">
+          <div class="flex justify-between items-center mb-1">
+            <label class="slider-label mb-0">EFEK (SFX)</label>
+            <button
+              id="btn-mute-sfx"
+              onclick="toggleSFX()"
+              class="text-xs font-bold text-gray-600 hover:text-blue-500 flex items-center gap-1"
+            >
+              <i class="fa-solid fa-volume-high"></i> ON
+            </button>
+          </div>
+          <input
+            id="sfx-slider"
+            type="range"
+            min="0"
+            max="1"
+            step="0.1"
+            value="1"
+            class="custom-range"
+            oninput="setSFXVolume(this.value)"
+          />
+        </div>
+        <button
+          onclick="openStats()"
+          class="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg mb-3 transition"
+        >
+          <i class="fa-solid fa-id-card mr-2"></i> STATUS KARAKTER
+        </button>
+        <button
+          onclick="goToMainMenu()"
+          class="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl font-bold shadow-lg mb-3 transition"
+        >
+          <i class="fa-solid fa-house mr-2"></i> KE MENU UTAMA
+        </button>
+        <button
+          onclick="closeSettings()"
+          class="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 py-3 rounded-xl font-bold shadow-lg transition"
+        >
+          KEMBALI KE GAME
+        </button>
+      </div>
+    </div>
+
+    <div id="stats-modal" class="modal-overlay hidden">
+      <div class="modal-content border-4 border-blue-400">
+        <button
+          onclick="closeStats()"
+          class="absolute top-3 right-3 text-gray-400 hover:text-red-500"
+        >
+          <i class="fa-solid fa-xmark text-xl"></i>
+        </button>
+        <h2
+          class="text-xl font-black text-blue-600 uppercase tracking-wider mb-4 border-b pb-2"
+        >
+          Data Karakter
+        </h2>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="stat-label">Level Kapak</div>
+            <div class="stat-value text-orange-500" id="stat-axe-lvl">1</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Kekuatan (Dmg)</div>
+            <div class="stat-value text-red-500" id="stat-dmg">1</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Stamina</div>
+            <div class="stat-value text-green-600" id="stat-stamina">100</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Kecepatan Lari</div>
+            <div class="stat-value text-purple-500">25.0</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Total Koin</div>
+            <div class="stat-value text-yellow-500" id="stat-coins">0</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Total Kayu</div>
+            <div class="stat-value text-amber-700" id="stat-wood">0</div>
+          </div>
+        </div>
+        <button
+          onclick="closeStats()"
+          class="w-full bg-blue-500 text-white py-2 rounded-lg font-bold"
+        >
+          TUTUP
+        </button>
+      </div>
+    </div>
+
+    <div id="shop-modal" class="modal-overlay hidden">
+      <div class="modal-content border-4 border-yellow-400">
+        <button
+          onclick="closeShop()"
+          class="absolute top-3 right-3 text-gray-400 hover:text-red-500 text-xl"
+        >
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+        <div class="mb-6">
+          <h2 class="text-2xl font-black text-gray-800 uppercase italic">
+            Toko Desa
+          </h2>
+          <div class="h-1 w-16 bg-yellow-400 mx-auto mt-1 rounded-full"></div>
+        </div>
+        <div
+          class="bg-green-50 p-3 rounded-xl mb-3 border border-green-100 flex justify-between items-center"
+        >
+          <div class="text-left">
+            <span class="block text-xs font-bold text-gray-500">Stok Kayu</span
+            ><span id="shop-stock" class="text-xl font-black text-gray-800"
+              >0</span
+            >
+          </div>
+          <button
+            onclick="sellWood()"
+            class="bg-green-500 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-md active:scale-95"
+          >
+            JUAL SEMUA
+          </button>
+        </div>
+        <div
+          class="bg-orange-50 p-3 rounded-xl mb-3 border border-orange-100 flex justify-between items-center"
+        >
+          <div class="text-left">
+            <span class="block text-xs font-bold text-gray-500"
+              >Kapak Lv.<span id="axe-lvl">1</span></span
+            ><span class="text-xs font-bold text-red-500"
+              >Dmg: x<span id="axe-dmg">1</span></span
+            >
+          </div>
+          <button
+            onclick="upgradeAxe()"
+            class="bg-orange-500 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-md active:scale-95"
+          >
+            UPGRADE <span id="upgrade-cost">50</span>💰
+          </button>
+        </div>
+        <div
+          class="bg-blue-50 p-3 rounded-xl border border-blue-100 flex justify-between items-center"
+        >
+          <div class="text-left">
+            <span class="block text-xs font-bold text-gray-500"
+              >Stamina Max</span
+            ><span
+              class="text-xl font-black text-blue-600"
+              id="max-stamina-disp"
+              >100</span
+            >
+          </div>
+          <button
+            onclick="upgradeStamina()"
+            class="bg-blue-500 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-md active:scale-95"
+          >
+            UPGRADE <span id="stamina-cost">100</span>💰
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="game.js"></script>
+    <script>
+      // Register Service Worker for PWA
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker
+            .register("./sw.js")
+            .then((reg) => console.log("SW Registered!", reg))
+            .catch((err) => console.log("SW Failed", err));
+        });
+      }
+    </script>
+  </body>
+</html>
