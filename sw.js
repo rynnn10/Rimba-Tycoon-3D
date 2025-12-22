@@ -1,4 +1,4 @@
-const CACHE_NAME = "rimba-tycoon-v2";
+const CACHE_NAME = "rimba-tycoon-v3";
 const ASSETS_TO_CACHE = [
   "./",
   "./index.html",
@@ -71,3 +71,4 @@ self.addEventListener("fetch", (event) => {
     );
   }
 });
+
