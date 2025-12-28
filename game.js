@@ -126,6 +126,7 @@ function startGame() {
 
   document.getElementById("start-screen").style.display = "none";
   const loadingScreen = document.getElementById("loading");
+  updateLoadingUIState(); // Cek apakah download atau load biasa
   loadingScreen.style.display = "flex";
   loadingScreen.classList.remove("hidden");
 
@@ -161,6 +162,7 @@ function continueGame() {
 
   // 1. Tampilkan Loading Screen Dulu (Supaya transisi halus seperti game baru)
   startScreen.style.display = "none";
+  updateLoadingUIState(); // Cek status teks loading
   loadingScreen.style.display = "flex";
   loadingScreen.classList.remove("hidden");
 
@@ -187,16 +189,58 @@ function continueGame() {
   }, 1000); // Jeda 1 detik untuk loading visual
 }
 
-// --- LOADING CONTENT ---
+// --- LOADING CONTENT (DENGAN PROGRESS BAR & OFFLINE READY) ---
 function loadContent() {
-  const onError = (error) => {
-    console.error("Gagal memuat aset:", error);
-    document.getElementById("loading").style.display = "none";
-    document.getElementById("game-ui").classList.remove("hidden");
-    isPaused = false;
-    alert("Terjadi kesalahan memuat aset 3D. Cek Console.");
+  // 1. Setup Loading Manager untuk melacak progress download
+  const manager = new THREE.LoadingManager();
+
+  // A. Saat Progress Berjalan (Update Bar & Teks)
+  manager.onProgress = function (url, itemsLoaded, itemsTotal) {
+    const pct = Math.floor((itemsLoaded / itemsTotal) * 100);
+
+    // Update UI HTML
+    const bar = document.getElementById("loading-bar-fill");
+    const txt = document.getElementById("loading-text");
+
+    if (bar) bar.style.width = pct + "%";
+    if (txt) txt.innerText = pct + "%";
+
+    console.log(`Loading file: ${url} (${itemsLoaded}/${itemsTotal})`);
   };
 
+  // B. Saat Semua Selesai (Masuk Game)
+  manager.onLoad = function () {
+    console.log("Semua aset terunduh! Game siap Offline.");
+    localStorage.setItem("rimbaAssetsCached", "true");
+
+    // Sembunyikan Loading Screen
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("game-ui").classList.remove("hidden");
+
+    // Mulai Musik & Game
+    isPaused = false;
+    const bgmAudio = document.getElementById("bgm");
+    if (bgmAudio.volume > 0) {
+      bgmAudio.play().catch((e) => {});
+    }
+
+    // Tampilkan Notifikasi Khusus
+    showToast("SIAP DIMAINKAN OFFLINE!", "success");
+  };
+
+  // C. Jika Error
+  manager.onError = function (url) {
+    console.log("Ada error saat memuat " + url);
+    showToast("Gagal memuat beberapa aset.", "error");
+  };
+
+  // 2. Pasang Manager ke Loader
+  // PENTING: Loader lama ditimpa dengan loader baru yang punya manager
+  loader = new THREE.GLTFLoader(manager);
+
+  // --- MULAI PROSES LOAD ASET SEPERTI BIASA (KODE LAMA DI BAWAH SINI) ---
+
+  // Load Player
   loader.load(
     ASSETS.player,
     (gltf) => {
@@ -205,10 +249,9 @@ function loadContent() {
       if (pendingSaveData) {
         player.position.set(pendingSaveData.pos.x, 0, pendingSaveData.pos.z);
         player.rotation.y = pendingSaveData.pos.rot;
-        cameraAngle = pendingSaveData.camAngle; // Kembalikan sudut kamera
-        pendingSaveData = null; // Reset setelah dipakai
+        cameraAngle = pendingSaveData.camAngle;
+        pendingSaveData = null;
       } else {
-        // Jika game baru
         player.position.set(0, 0, 0);
       }
       player.traverse((o) => {
@@ -239,23 +282,20 @@ function loadContent() {
           anims[1];
         actions["Idle"] = mixer.clipAction(idle);
         actions["Run"] = mixer.clipAction(run);
+
+        // Load Jump Animation jika ada (opsional, sesuaikan nama animasi di model)
+        const jumpAnim = anims.find((c) =>
+          c.name.toLowerCase().includes("jump")
+        );
+        if (jumpAnim) actions["Jump"] = mixer.clipAction(jumpAnim);
+
         actions["Idle"].play();
         activeAction = actions["Idle"];
       }
 
-      const bgmAudio = document.getElementById("bgm");
-      document.getElementById("loading").style.display = "none";
-      document.getElementById("game-ui").classList.remove("hidden");
-      isPaused = false;
-      if (bgmAudio.volume > 0) {
-        bgmAudio.play().catch((e) => {});
-      }
-
-      // --- UPDATE: Load Kapak Sesuai Level Saat Ini ---
-      let currentAxeAsset = ASSETS.axe; // Default Lv 1
+      // Load Kapak Awal (Logic Leveling)
+      let currentAxeAsset = ASSETS.axe;
       let currentScale = 1.0;
-
-      // Cek state level dari save data
       if (state.axeLevel === 2) {
         currentAxeAsset = ASSETS.axe2;
         currentScale = 1.2;
@@ -268,163 +308,117 @@ function loadContent() {
         currentAxeAsset,
         (axeGltf) => {
           axeMesh = axeGltf.scene;
-          axeMesh.scale.set(currentScale, currentScale, currentScale); // Skala sesuai level
+          axeMesh.scale.set(currentScale, currentScale, currentScale);
           axeMesh.traverse((o) => {
             if (o.isMesh) o.castShadow = true;
           });
-
-          // Reset rotasi & posisi
           axeMesh.rotation.set(
             AXE_CONFIG.rotX,
             AXE_CONFIG.rotY,
             AXE_CONFIG.rotZ
           );
           axeMesh.position.set(0, 0, 0);
-
           handContainer.add(axeMesh);
         },
         undefined,
-        (e) => console.warn("Gagal load kapak level " + state.axeLevel, e)
+        (e) => console.warn("Gagal load kapak", e)
       );
-      // -----------------------------------------------------
     },
     undefined,
-    onError
+    (e) => console.error("Player Error", e) // Error ditangani Manager
   );
 
-  loader.load(
-    ASSETS.shop,
-    (gltf) => {
-      const shop = gltf.scene;
-      shop.position.copy(shopArea.position);
-      shop.scale.set(4.5, 4.5, 4.5);
-      shop.rotation.y = Math.PI;
-      shop.traverse((o) => {
+  // Load Shop
+  loader.load(ASSETS.shop, (gltf) => {
+    const shop = gltf.scene;
+    shop.position.copy(shopArea.position);
+    shop.scale.set(4.5, 4.5, 4.5);
+    shop.rotation.y = Math.PI;
+    shop.traverse((o) => {
+      if (o.isMesh) {
+        o.castShadow = true;
+        o.receiveShadow = true;
+      }
+    });
+    scene.add(shop);
+  });
+
+  // Load Home
+  loader.load(ASSETS.home, (gltf) => {
+    const home = gltf.scene;
+    home.position.copy(homeArea.position);
+    home.scale.set(9.0, 9.0, 9.0);
+    home.rotation.y = Math.PI / 2;
+    home.traverse((o) => {
+      if (o.isMesh) {
+        o.castShadow = true;
+        o.receiveShadow = true;
+      }
+    });
+    scene.add(home);
+  });
+
+  // Load Hill (Environment)
+  loader.load(ASSETS.hill1, (gltf) => {
+    const model = gltf.scene;
+    for (let i = 0; i < 30; i++) {
+      const angle = (i / 30) * Math.PI * 2;
+      const hx = Math.cos(angle) * HILL_VISUAL_RADIUS;
+      const hz = Math.sin(angle) * HILL_VISUAL_RADIUS;
+      const hill = model.clone();
+      hill.position.set(hx, -2, hz);
+      hill.lookAt(0, 0, 0);
+      hill.scale.set(35, 50, 35);
+      hill.traverse((o) => {
+        if (o.isMesh) o.receiveShadow = true;
+      });
+      scene.add(hill);
+    }
+  });
+
+  // Load Rumput Kecil
+  loader.load(ASSETS.grass1, (gltf) => {
+    const model = gltf.scene;
+    model.traverse((o) => {
+      if (o.isMesh) o.material.color.setHex(0x4caf50);
+    });
+    for (let i = 0; i < 100; i++) {
+      const g = model.clone();
+      const dist = Math.random() * MAP_RADIUS_COLLISION;
+      const angle = Math.random() * Math.PI * 2;
+      g.position.set(Math.cos(angle) * dist, 0, Math.sin(angle) * dist);
+      g.scale.set(4.5, 4.5, 4.5);
+      g.rotation.y = Math.random() * Math.PI;
+      scene.add(g);
+    }
+  });
+
+  // Load Rumput Besar
+  loader.load(ASSETS.grass2, (gltf) => {
+    const model = gltf.scene;
+    model.traverse((o) => {
+      if (o.isMesh) o.material.color.setHex(0x388e3c);
+    });
+    for (let i = 0; i < 40; i++) {
+      const g = model.clone();
+      const dist = Math.random() * MAP_RADIUS_COLLISION;
+      const angle = Math.random() * Math.PI * 2;
+      g.position.set(Math.cos(angle) * dist, 0, Math.sin(angle) * dist);
+      g.scale.set(7.5, 7.5, 7.5);
+      g.rotation.y = Math.random() * Math.PI;
+      g.traverse((o) => {
         if (o.isMesh) {
           o.castShadow = true;
           o.receiveShadow = true;
         }
       });
-      scene.add(shop);
-    },
-    undefined,
-    (e) => console.warn("Shop gagal load", e)
-  );
+      scene.add(g);
+      grasses.push(g);
+    }
+  });
 
-  loader.load(
-    ASSETS.home,
-    (gltf) => {
-      const home = gltf.scene;
-      home.position.copy(homeArea.position);
-      home.scale.set(9.0, 9.0, 9.0);
-      home.rotation.y = Math.PI / 2;
-      home.traverse((o) => {
-        if (o.isMesh) {
-          o.castShadow = true;
-          o.receiveShadow = true;
-        }
-      });
-      scene.add(home);
-    },
-    undefined,
-    (e) => console.warn("Home gagal load", e)
-  );
-
-  loader.load(
-    ASSETS.hill1,
-    (gltf) => {
-      const model = gltf.scene;
-      for (let i = 0; i < 30; i++) {
-        const angle = (i / 30) * Math.PI * 2;
-        const hx = Math.cos(angle) * HILL_VISUAL_RADIUS;
-        const hz = Math.sin(angle) * HILL_VISUAL_RADIUS;
-        const hill = model.clone();
-        hill.position.set(hx, -2, hz);
-        hill.lookAt(0, 0, 0);
-        hill.scale.set(35, 50, 35);
-        hill.traverse((o) => {
-          if (o.isMesh) o.receiveShadow = true;
-        });
-        scene.add(hill);
-      }
-    },
-    undefined,
-    (e) => console.warn("Hill gagal load", e)
-  );
-
-  // --- LOADER RUMPUT ---
-  // 1. Rumput Kecil (Hiasan - Banyak)
-  loader.load(
-    ASSETS.grass1,
-    (gltf) => {
-      const model = gltf.scene;
-
-      // PERBAIKAN WARNA: Paksa jadi hijau jika modelnya putih/polos
-      model.traverse((o) => {
-        if (o.isMesh) {
-          // Warna hijau rumput (Hex: 0x4caf50)
-          o.material.color.setHex(0x4caf50);
-        }
-      });
-
-      for (let i = 0; i < 100; i++) {
-        const g = model.clone();
-        const dist = Math.random() * MAP_RADIUS_COLLISION;
-        const angle = Math.random() * Math.PI * 2;
-        g.position.set(Math.cos(angle) * dist, 0, Math.sin(angle) * dist);
-
-        // UPDATE UKURAN: Diperbesar dari 1.5 ke 2.5
-        g.scale.set(4.5, 4.5, 4.5);
-
-        g.rotation.y = Math.random() * Math.PI;
-        scene.add(g);
-      }
-    },
-    undefined,
-    (e) => console.warn("Grass1 (Kecil) gagal load", e)
-  );
-
-  // 2. Rumput Besar (Tempat Sembunyi - Lebih Sedikit)
-  loader.load(
-    ASSETS.grass2,
-    (gltf) => {
-      const model = gltf.scene;
-
-      // PERBAIKAN WARNA: Paksa jadi hijau tua
-      model.traverse((o) => {
-        if (o.isMesh) {
-          o.material.color.setHex(0x388e3c);
-        }
-      });
-
-      for (let i = 0; i < 40; i++) {
-        const g = model.clone();
-        const dist = Math.random() * MAP_RADIUS_COLLISION;
-        const angle = Math.random() * Math.PI * 2;
-        g.position.set(Math.cos(angle) * dist, 0, Math.sin(angle) * dist);
-
-        // UPDATE UKURAN: Diperbesar dari 2.5 ke 4.5
-        g.scale.set(7.5, 7.5, 7.5);
-
-        g.rotation.y = Math.random() * Math.PI;
-
-        g.traverse((o) => {
-          if (o.isMesh) {
-            o.castShadow = true;
-            o.receiveShadow = true;
-          }
-        });
-
-        scene.add(g);
-        grasses.push(g);
-      }
-    },
-    undefined,
-    (e) => console.warn("Grass2 (Besar) gagal load", e)
-  );
-
-  // --- GANTI LOGIKA LOAD POHON DENGAN INI ---
-  let treesToLoad = 3; // Total 3 pohon
+  // Load Pohon-pohon (Counter logic inside manager handles completion)
+  let treesToLoad = 3;
   function onTreeLoaded() {
     treesToLoad--;
     if (treesToLoad === 0) {
@@ -432,38 +426,18 @@ function loadContent() {
     }
   }
 
-  // 1. Load Pohon Lama
-  loader.load(
-    ASSETS.tree1,
-    (gltf) => {
-      treeModels.type1 = gltf.scene;
-      onTreeLoaded();
-    },
-    undefined,
-    onError
-  );
-
-  // 2. Load Pohon Baru 1
-  loader.load(
-    ASSETS.tree2,
-    (gltf) => {
-      treeModels.type2 = gltf.scene;
-      onTreeLoaded();
-    },
-    undefined,
-    onError
-  );
-
-  // 3. Load Pohon Baru 2
-  loader.load(
-    ASSETS.tree3,
-    (gltf) => {
-      treeModels.type3 = gltf.scene;
-      onTreeLoaded();
-    },
-    undefined,
-    onError
-  );
+  loader.load(ASSETS.tree1, (gltf) => {
+    treeModels.type1 = gltf.scene;
+    onTreeLoaded();
+  });
+  loader.load(ASSETS.tree2, (gltf) => {
+    treeModels.type2 = gltf.scene;
+    onTreeLoaded();
+  });
+  loader.load(ASSETS.tree3, (gltf) => {
+    treeModels.type3 = gltf.scene;
+    onTreeLoaded();
+  });
 }
 
 // --- AUDIO SYSTEM ---
@@ -492,30 +466,26 @@ function toggleBGM() {
 }
 
 function toggleSFX() {
-  isSFXMuted = !isSFXMuted;
-  localStorage.setItem("rimbaMuteSFX", isSFXMuted);
-
+  // Cek kondisi saat ini
   if (isSFXMuted) {
-    // Matikan suara jalan jika sedang bunyi
-    const sfxStep = document.getElementById("sfx-step");
-    if (sfxStep) {
-      sfxStep.pause();
-      sfxStep.currentTime = 0;
-    }
+    // KASUS: MAU NYALA (UNMUTE)
+    let targetVol = lastSFXVol > 0 ? lastSFXVol : 1.0;
+    setSFXVolume(targetVol);
 
-    // TAMBAHKAN INI: Matikan suara lari jika sedang bunyi
-    const sfxRun = document.getElementById("sfx-run");
-    if (sfxRun) {
-      sfxRun.pause();
-      sfxRun.currentTime = 0;
-    }
-
-    showToast("Efek Mati", "error");
+    // Baris showToast dihapus agar tidak muncul notif
   } else {
-    // Logika untuk menyalakan kembali akan diatur oleh update() berdasarkan pergerakan
-    showToast("Efek Nyala", "success");
+    // KASUS: MAU MATI (MUTE)
+    const slider = document.getElementById("sfx-slider");
+    if (slider && slider.value > 0) {
+      lastSFXVol = parseFloat(slider.value);
+    }
+    setSFXVolume(0);
+
+    // Baris showToast dihapus agar tidak muncul notif
   }
-  updateSettingsUI();
+
+  // Simpan status mute ke storage
+  localStorage.setItem("rimbaMuteSFX", !isSFXMuted);
 }
 
 // --- TAMBAHKAN FUNGSI INI AGAR EROR HILANG ---
@@ -524,18 +494,29 @@ function loadSettings() {
   const savedBGM = localStorage.getItem("rimbaBGMVolume");
   if (savedBGM !== null) {
     setBGMVolume(savedBGM);
+  } else {
+    // Default BGM (misal 40%)
+    setBGMVolume(0.4);
   }
 
   // Load SFX Volume
   const savedSFX = localStorage.getItem("rimbaSFXVolume");
+
   if (savedSFX !== null) {
+    // Jika ada simpanan, pakai itu
     setSFXVolume(savedSFX);
+  } else {
+    // --- PERBAIKAN: JIKA BARU MAIN, DEFAULT 100% ---
+    setSFXVolume(1.0);
   }
 
-  // Load Mute State (Optional)
-  const savedMuteSFX = localStorage.getItem("rimbaMuteSFX");
-  if (savedMuteSFX === "true") {
-    toggleSFX(); // Matikan jika tersimpan mati
+  // Pastikan variabel internal diset ke NYALA (Sesuai request sebelumnya)
+  isSFXMuted = false;
+
+  // Pastikan Tombol di UI Menampilkan "ON"
+  const btn = document.getElementById("btn-mute-sfx");
+  if (btn) {
+    btn.innerHTML = '<i class="fa-solid fa-volume-high"></i> ON';
   }
 }
 
@@ -562,26 +543,39 @@ function setBGMVolume(val) {
   }
 }
 
-// GANTI FUNCTION setSFXVolume
 function setSFXVolume(val) {
   const sfxVol = parseFloat(val);
   if (isNaN(sfxVol)) return;
 
-  // Update daftar audio
-  document.getElementById("sfx-chop").volume = sfxVol;
-  document.getElementById("sfx-jump").volume = sfxVol;
-  document.getElementById("sfx-coin").volume = sfxVol;
-  document.getElementById("sfx-fail").volume = sfxVol;
-  document.getElementById("sfx-fall").volume = sfxVol;
-  document.getElementById("sfx-step").volume = sfxVol;
-  document.getElementById("sfx-run").volume = sfxVol; // TAMBAHKAN INI
+  // --- TAMBAHAN PENTING: Simpan memori volume ---
+  // Jika volume > 0, simpan sebagai referensi 'lastSFXVol'
+  if (sfxVol > 0) {
+    lastSFXVol = sfxVol;
+  }
+  // ----------------------------------------------
+
+  // Update volume semua audio element
+  const audioIds = [
+    "sfx-chop",
+    "sfx-jump",
+    "sfx-coin",
+    "sfx-fail",
+    "sfx-fall",
+    "sfx-step",
+    "sfx-run",
+  ];
+  audioIds.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.volume = sfxVol;
+  });
 
   localStorage.setItem("rimbaSFXVolume", sfxVol);
 
-  // Update UI Slider
+  // Update Posisi Slider UI (Bar otomatis geser)
   const sfxSlider = document.getElementById("sfx-slider");
   if (sfxSlider) sfxSlider.value = val;
 
+  // Update Tampilan Tombol ON/OFF
   const btn = document.getElementById("btn-mute-sfx");
   if (val <= 0) {
     isSFXMuted = true;
@@ -668,7 +662,7 @@ function openStats() {
   if (setModal) setModal.classList.add("hidden");
   if (statModal) statModal.classList.remove("hidden");
 
-  // --- FIX: Cek elemen sebelum diisi datanya ---
+  // Isi data teks
   const elAxe = document.getElementById("stat-axe-lvl");
   const elDmg = document.getElementById("stat-dmg");
   const elStam = document.getElementById("stat-stamina");
@@ -681,14 +675,18 @@ function openStats() {
     elStam.innerText = Math.floor(state.stamina) + " / " + state.maxStamina;
   if (elCoin) elCoin.innerText = state.coins;
   if (elWood) elWood.innerText = state.wood;
-  // -------------------------------------------
 
-  // Update Gambar Kapak di Stats
+  // --- PERBAIKAN: Update Gambar Kapak Sesuai Level ---
   const statAxeImg = document.getElementById("stat-axe-img");
   if (statAxeImg) {
-    let imgPath = "assets/kapak.png";
-    if (state.axeLevel === 2) imgPath = "assets/kapak.png";
-    if (state.axeLevel >= 3) imgPath = "assets/kapak.png";
+    let imgPath = "assets/kapak.png"; // Default Lv 1
+
+    if (state.axeLevel === 2) {
+      imgPath = "assets/kapakup.png"; // Lv 2 (Pastikan file ini ada di folder assets)
+    } else if (state.axeLevel >= 3) {
+      imgPath = "assets/kapak3.png"; // Lv 3 (Pastikan file ini ada di folder assets)
+    }
+
     statAxeImg.src = imgPath;
   }
 }
@@ -1384,15 +1382,13 @@ function checkInteractions() {
     // Terapkan ke tombol
     if (showAction) {
       actionBtn.classList.remove("hidden");
-      actionBtn.classList.add("animate-bounce");
-      actionBtn.innerText = icon;
+      actionBtn.style.transform = "scale(1)";
 
-      // Update handler klik secara dinamis
+      actionBtn.innerText = icon;
       actionBtn.onclick = actionFunc;
     } else {
       // Cek interaksi rumah terpisah karena tombolnya beda (btn-sleep)
       actionBtn.classList.add("hidden");
-      actionBtn.classList.remove("animate-bounce");
     }
   }
 
@@ -1503,6 +1499,7 @@ function showDamage(pos, amount) {
 }
 
 function openShop() {
+  isPaused = true; // Tambahkan ini agar aman (game berhenti saat belanja)
   // Update Data Teks (TETAP SAMA)
   document.getElementById("shop-stock").innerText = state.wood;
   document.getElementById("axe-lvl").innerText = state.axeLevel;
@@ -1610,8 +1607,12 @@ function exitApp() {
 }
 
 function closeShop() {
-  // Ganti penutupan langsung dengan animasi
-  closeModalWithAnimation("shop-modal");
+  // Panggil helper animasi tutup
+  closeModalWithAnimation("shop-modal", () => {
+    // Callback setelah animasi selesai:
+    isPaused = false; // PENTING: Jalankan game lagi
+    checkInteractions(); // PENTING: Paksa cek ulang agar tombol interaksi langsung aktif
+  });
 }
 
 // FUNGSI BARU: Mengganti model kapak secara visual
@@ -2183,6 +2184,44 @@ function setupControls() {
     },
     { passive: false }
   );
+  // --- FIX MULTITOUCH: LOMPAT & LARI ---
+  // Menggunakan touchstart langsung agar bisa ditekan bersamaan dengan analog
+  const jumpBtn = document.getElementById("jump-btn");
+  const runBtn = document.getElementById("run-btn");
+
+  if (jumpBtn) {
+    jumpBtn.addEventListener(
+      "touchstart",
+      (e) => {
+        e.preventDefault(); // Mencegah delay/ghost click
+        e.stopPropagation(); // Mencegah konflik dengan swipe kamera
+        jump();
+      },
+      { passive: false }
+    );
+  }
+
+  if (runBtn) {
+    runBtn.addEventListener(
+      "touchstart",
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleRun(true);
+      },
+      { passive: false }
+    );
+
+    runBtn.addEventListener(
+      "touchend",
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleRun(false);
+      },
+      { passive: false }
+    );
+  }
 }
 
 function animate() {
@@ -2222,4 +2261,31 @@ function closeAxeInfo() {
   document.getElementById("axe-info-modal").classList.add("hidden");
   // Pastikan toko tetap buka jika tadi dibuka dari toko
   // document.getElementById("shop-modal").classList.remove("hidden");
+}
+
+// --- HELPER: UPDATE TAMPILAN LOADING SCREEN ---
+function updateLoadingUIState() {
+  const isCached = localStorage.getItem("rimbaAssetsCached") === "true";
+
+  const elTitle = document.getElementById("loading-title");
+  const elDesc = document.getElementById("loading-desc");
+  const elIcon = document.getElementById("loading-icon");
+
+  if (isCached) {
+    // KONDISI 2: ASET SUDAH ADA (MEMUAT GAME)
+    if (elTitle) elTitle.innerText = "MEMUAT DUNIA...";
+    if (elDesc)
+      elDesc.innerHTML =
+        "<i class='fa-solid fa-gamepad'></i> Menyiapkan lingkungan permainan...";
+    if (elIcon)
+      elIcon.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; // Ikon Loading Putar
+  } else {
+    // KONDISI 1: PERTAMA KALI (DOWNLOAD)
+    if (elTitle) elTitle.innerText = "MENGUNDUH ASET...";
+    if (elDesc)
+      elDesc.innerHTML =
+        "<i class='fa-solid fa-wifi'></i> Mengunduh data agar game bisa dimainkan <b>OFFLINE</b> nanti.";
+    if (elIcon)
+      elIcon.innerHTML = '<i class="fa-solid fa-cloud-arrow-down"></i>'; // Ikon Download Awan
+  }
 }

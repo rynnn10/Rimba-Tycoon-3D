@@ -346,14 +346,18 @@ body {
   justify-content: center;
   color: white;
 }
-/* Update Style Tombol Utama agar Sama Rata */
+/* Style Tombol Utama agar Sama Rata */
 .start-btn {
-  /* Ubah padding agar pas dengan width tetap */
-  padding: 15px 0;
-  /* Berikan lebar tetap agar tombol pendek dan panjang sama ukurannya */
+  /* --- HAPUS PADDING ATAS BAWAH LAMA --- */
+  /* padding: 15px 0; */
+
+  /* --- GANTI DENGAN HEIGHT TETAP --- */
+  height: 60px; /* Memaksa semua tombol tingginya sama persis */
+
+  /* Berikan lebar tetap */
   width: 260px;
 
-  font-size: 18px; /* Sedikit disesuaikan agar muat */
+  font-size: 18px;
   background: linear-gradient(90deg, #fdbb2d 0%, #22c1c3 100%);
   border-radius: 50px;
   font-weight: 900;
@@ -365,14 +369,23 @@ body {
   text-transform: uppercase;
   margin: 0;
 
-  /* Flexbox untuk menengahkan teks & icon */
+  /* Flexbox wajib ada agar teks di tengah vertikal */
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 10px; /* Jarak antara icon dan teks */
+  gap: 10px;
 }
-.start-btn:hover {
-  transform: scale(1.05);
+/* 1. Efek Membesar HANYA jika punya mouse (PC) agar tidak nyangkut di HP */
+@media (hover: hover) {
+  .start-btn:hover {
+    transform: scale(1.05);
+  }
+}
+
+/* 2. Efek Menegecil saat ditekan (Feedback Klik) */
+.start-btn:active {
+  transform: scale(0.95);
+  filter: brightness(0.9); /* Sedikit gelap saat ditekan */
 }
 
 /* Settings Slider */
@@ -614,9 +627,12 @@ body {
 /* --- SATU BLOK PENGATURAN LANDSCAPE (FIXED) --- */
 @media (max-height: 500px) and (orientation: landscape) {
   .start-btn.btn-exit {
-    width: 220px !important; /* Samakan dengan .start-btn biasa (220px) */
-    font-size: 14px; /* Samakan font size */
-    padding: 10px 0; /* Samakan padding */
+    width: 220px !important;
+    font-size: 14px;
+
+    /* padding: 10px 0; <--- HAPUS INI JUGA DI BTN EXIT */
+    height: 45px; /* Pastikan sama */
+
     margin-top: 0;
   }
   #toast-container {
@@ -707,12 +723,18 @@ body {
     justify-content: center;
   }
   .start-btn {
-    width: 220px; /* Lebar tetap agar seragam */
-    padding: 10px 0; /* Padding atas bawah */
+    width: 220px;
+
+    /* --- HAPUS PADDING LAMA --- */
+    /* padding: 10px 0; */
+
+    /* --- GANTI DENGAN TINGGI TETAP YG LEBIH KECIL --- */
+    height: 45px;
+
     font-size: 14px;
     margin: 0;
     text-align: center;
-    display: flex; /* Flex agar icon dan teks center */
+    display: flex;
     justify-content: center;
     align-items: center;
     gap: 8px;

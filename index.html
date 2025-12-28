@@ -50,11 +50,35 @@
     </audio>
 
     <div id="loading" class="hidden">
-      <div class="text-6xl mb-4 animate-bounce">🌲</div>
-      <h2 class="text-2xl font-black text-green-400 tracking-wider">
-        MEMUAT HUTAN...
+      <div id="loading-icon" class="text-6xl mb-4 text-cyan-400 animate-bounce">
+        <i class="fa-solid fa-cloud-arrow-down"></i>
+      </div>
+
+      <h2
+        id="loading-title"
+        class="text-2xl font-black text-white tracking-wider mb-2"
+      >
+        MENGUNDUH ASET...
       </h2>
-      <p class="text-xs text-gray-500 mt-2">Menyiapkan aset 3D</p>
+
+      <div
+        class="w-64 h-4 bg-gray-700 rounded-full overflow-hidden border border-gray-500 mb-2 relative"
+      >
+        <div
+          id="loading-bar-fill"
+          class="h-full bg-gradient-to-r from-green-400 to-cyan-500 w-0 transition-all duration-300"
+        ></div>
+      </div>
+
+      <p id="loading-text" class="text-xl font-bold text-yellow-400">0%</p>
+
+      <p
+        id="loading-desc"
+        class="text-xs text-gray-400 mt-4 max-w-xs text-center"
+      >
+        <i class="fa-solid fa-wifi"></i> Mengunduh data agar game bisa dimainkan
+        <b>OFFLINE</b> nanti.
+      </p>
     </div>
 
     <div id="sleep-screen" class="hidden" style="display: none">
@@ -143,7 +167,7 @@
               <i class="fa-solid fa-code text-cyan-500"></i> Developed by Riyan
             </p>
             <p class="text-xs text-gray-500 mt-1 uppercase tracking-widest">
-              Simulasi Penebang Kayu 3D - Versi v2.8
+              Simulasi Penebang Kayu 3D
             </p>
           </div>
 
