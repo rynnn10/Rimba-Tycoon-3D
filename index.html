@@ -82,17 +82,17 @@
         >
           RIMBA<br />TYCOON
         </h1>
+
         <p
           class="text-sm text-gray-300 font-bold tracking-widest uppercase relative z-10"
         >
           Simulasi Penebang Kayu 3D
         </p>
         <p class="mt-2 text-[10px] text-gray-500 opacity-60 relative z-10">
-          v2.8 Landscape Fixed
+          v3.0 Updated
         </p>
       </div>
-
-      <div id="start-buttons" class="flex flex-col items-center">
+      <div id="start-buttons" class="flex flex-col items-center gap-3">
         <button
           id="btn-continue"
           onclick="continueGame()"
@@ -100,13 +100,153 @@
         >
           LANJUTKAN
         </button>
+
         <button onclick="startGame()" class="start-btn">MULAI BARU</button>
 
         <button onclick="openInfo()" class="start-btn">
           <i class="fa-solid fa-circle-info"></i> TENTANG GAME
         </button>
+
+        <button onclick="exitApp()" class="start-btn btn-exit">
+          <i class="fa-solid fa-power-off"></i> KELUAR GAME
+        </button>
       </div>
+
       <div class="copyright-footer">© RIYAN 2025 | ALL RIGHTS RESERVED</div>
+    </div>
+
+    <div id="info-modal" class="modal-overlay hidden" onclick="closeInfo()">
+      <div
+        class="modal-content border-4 border-cyan-400 w-[90%] max-w-2xl"
+        onclick="event.stopPropagation()"
+      >
+        <button
+          onclick="closeInfo()"
+          class="absolute top-4 right-4 text-gray-400 hover:text-red-500 transition scale-110"
+        >
+          <i class="fa-solid fa-xmark text-2xl"></i>
+        </button>
+
+        <div class="flex justify-between items-center mb-6 border-b pb-3">
+          <h2
+            class="text-3xl font-black text-cyan-600 uppercase tracking-wider m-0 flex items-center gap-3"
+          >
+            <i class="fa-solid fa-circle-info"></i> RIMBA TYCOON
+          </h2>
+        </div>
+
+        <div class="space-y-6 text-sm leading-relaxed">
+          <div
+            class="bg-gray-100 p-4 rounded-2xl border border-gray-200 shadow-inner"
+          >
+            <p class="font-bold text-gray-800 text-lg flex items-center gap-2">
+              <i class="fa-solid fa-code text-cyan-500"></i> Developed by Riyan
+            </p>
+            <p class="text-xs text-gray-500 mt-1 uppercase tracking-widest">
+              Simulasi Penebang Kayu 3D - Versi v2.8
+            </p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-gray-700">
+            <div
+              class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3"
+            >
+              <h4
+                class="font-black text-base text-cyan-600 uppercase tracking-wider border-b pb-1 flex items-center gap-2"
+              >
+                <i class="fa-solid fa-gamepad text-xs"></i> Cara Bermain
+              </h4>
+              <p>
+                Nikmati pengalaman simulasi penebang kayu 3D yang dinamis.
+                Gunakan
+                <span class="font-bold text-orange-500">Joystick</span> di HP
+                atau tombol <span class="font-bold">WASD</span> di PC untuk
+                menggerakkan karakter.
+              </p>
+              <p>
+                Tujuan utama Anda adalah menebang pohon, mengumpulkan kayu, dan
+                menjualnya di Toko Desa untuk mendapatkan
+                <span class="font-bold text-yellow-500">Koin Emas 💰</span>.
+              </p>
+            </div>
+
+            <div
+              class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3"
+            >
+              <h4
+                class="font-black text-base text-cyan-600 uppercase tracking-wider border-b pb-1 flex items-center gap-2"
+              >
+                <i class="fa-solid fa-star text-xs text-yellow-400"></i> Fitur
+                Unggulan
+              </h4>
+              <div class="grid grid-cols-2 gap-x-3 gap-y-2 text-xs font-medium">
+                <div class="flex items-center gap-2">
+                  <i class="fa-solid fa-vr-cardboard text-cyan-400"></i>
+                  Lumberjack 3D
+                </div>
+                <div class="flex items-center gap-2">
+                  <i class="fa-solid fa-up-long text-green-400"></i> Smooth
+                  Movement
+                </div>
+                <div class="flex items-center gap-2">
+                  <i class="fa-solid fa-hammer text-orange-400"></i> Leveling
+                  Axes
+                </div>
+                <div class="flex items-center gap-2">
+                  <i class="fa-solid fa-bolt text-yellow-400"></i> Stamina
+                  Upgrade
+                </div>
+                <div class="flex items-center gap-2">
+                  <i class="fa-solid fa-sun text-amber-400"></i> Day Cycle
+                </div>
+                <div class="flex items-center gap-2">
+                  <i class="fa-solid fa-floppy-disk text-blue-400"></i> Auto
+                  Save
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            class="bg-cyan-50 p-4 rounded-2xl border border-cyan-100 shadow-sm"
+          >
+            <p
+              class="font-bold text-cyan-800 text-base flex items-center gap-2 mb-3"
+            >
+              <i class="fa-solid fa-layer-group text-sm"></i> Teknologi
+            </p>
+            <div class="flex flex-wrap gap-3 text-xs text-white font-bold">
+              <span
+                class="bg-red-500 px-3 py-1 rounded-full flex items-center gap-1.5"
+                ><i class="fa-brands fa-html5"></i> HTML5</span
+              >
+              <span
+                class="bg-blue-500 px-3 py-1 rounded-full flex items-center gap-1.5"
+                ><i class="fa-brands fa-css3-alt"></i> CSS3 (Tailwind)</span
+              >
+              <span
+                class="bg-amber-500 px-3 py-1 rounded-full flex items-center gap-1.5"
+                ><i class="fa-brands fa-js"></i> JavaScript</span
+              >
+              <span
+                class="bg-black px-3 py-1 rounded-full flex items-center gap-1.5"
+                ><i class="fa-solid fa-cube"></i> Three.js</span
+              >
+            </div>
+            <p class="text-xs text-gray-500 mt-3">
+              Aplikasi ini didukung oleh model 3D dari Mixamo (untuk karakter)
+              dan Sketchfab (untuk kapak & pohon).
+            </p>
+          </div>
+        </div>
+
+        <button
+          onclick="closeInfo()"
+          class="w-full bg-gray-600 hover:bg-gray-700 text-white py-3 rounded-xl font-bold shadow-lg mt-6 transition transform active:scale-95"
+        >
+          <i class="fa-solid fa-check mr-2"></i> PAHAM!
+        </button>
+      </div>
     </div>
 
     <div id="game-ui" class="hidden">

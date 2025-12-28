@@ -28,6 +28,7 @@ const COLLISION_RADII = { shop: 3.5, home: 5.5, tree: 2.5, player: 1.0 };
 const INTERACTION_RADII = { shop: 12.0, home: 12.0 };
 
 // GLOBALS
+const MAX_AXE_LEVEL = 3; // --- TAMBAHAN KONSTANTA ---
 let staminaRegenTimer = 0; // Timer penunda regenerasi stamina
 let autoSaveTimer = 0; // <--- TAMBAHKAN INI (Untuk hitung waktu save saat jalan)
 let scene, camera, renderer, clock, loader;
@@ -907,6 +908,7 @@ function spawnOneTree() {
     if (posVec.length() < 35) continue;
     if (posVec.distanceTo(shopArea.position) < 25) continue;
     if (posVec.distanceTo(homeArea.position) < 25) continue;
+    if (player && posVec.distanceTo(player.position) < 8.0) continue;
 
     let tooClose = false;
     for (let t of trees) {
@@ -942,12 +944,33 @@ function spawnOneTree() {
   }
 }
 
+// --- FUNGSI HELPER BARU UNTUK SMOOTH ANIMATION ---
+function fadeAnimation(newAction, duration = 0.2) {
+  if (!newAction || !gameStarted || isPaused) return;
+  if (newAction === activeAction) return; // Animasi sama, abaikan
+
+  const oldAction = activeAction;
+  newAction.reset();
+  newAction.play();
+  newAction.setEffectiveTimeScale(1);
+  newAction.setEffectiveWeight(1);
+
+  if (oldAction) {
+    // Lakukan blending smooth
+    oldAction.crossFadeTo(newAction, duration, true);
+  } else {
+    newAction.fadeIn(duration);
+  }
+
+  activeAction = newAction;
+}
+
 function update(delta) {
   if (isPaused) return;
   if (!player) return;
   if (mixer) mixer.update(delta);
 
-  // --- 1. LOGIKA LOMPAT ---
+  // --- 1. LOGIKA LOMPAT & GRAVITASI (TETAP) ---
   if (isJumping || player.position.y > 0) {
     player.position.y += yVelocity;
     yVelocity -= GRAVITY;
@@ -969,7 +992,7 @@ function update(delta) {
     }
   }
 
-  // --- 2. INPUT ---
+  // --- 2. INPUT (TETAP) ---
   let dx = joystick.x,
     dz = joystick.y;
   if (keys.ArrowUp) dz -= 1;
@@ -980,77 +1003,112 @@ function update(delta) {
   if (keys.Shift) toggleRun(true);
   else if (!("ontouchstart" in window)) toggleRun(false);
 
-  // --- 3. LOGIKA GERAK & AUDIO (FIXED) ---
+  // --- 3. LOGIKA GERAK, STAMINA & AUDIO (FIXED SMOOTH JUMP & MOVEMENT) ---
   const isMoving = Math.abs(dx) > 0.1 || Math.abs(dz) > 0.1;
   let currentSpeed = WALK_SPEED;
 
   const walkAudio = document.getElementById("sfx-step");
   const runAudio = document.getElementById("sfx-run");
 
-  if (isMoving) {
+  // LOGIKA PRIORITAS ANIMASI & BLENDING (UPDATED)
+  if (state.isChopping) {
+    // Animasi nebang sedang berjalan, logic Gerak/Lompat di-freeze oleh fungsi performChop.
+    // Kita tidak melakukan blending animasi di sini, biarkan nebang selesai.
+  } else if (isJumping) {
+    // Prioritas 1: Sedang Loncat (Jalan/Lari tetap di blok ini)
+
+    // Mainkan animasi loncat dengan blending smooth jika sebelumnya dari gerakan lain
+    if (actions["Jump"]) fadeAnimation(actions["Jump"], 0.1); // Blending sangat cepat agar responsif
+
+    if (isMoving) {
+      // Loncat sambil bergerak
+      currentSpeed = WALK_SPEED; // Gunakan kecepatan jalan saat loncat agar tidak "peyot"
+
+      // Logic Audio (Matikan langkah saat di udara)
+      if (walkAudio) walkAudio.pause();
+      if (runAudio) runAudio.pause();
+
+      // Timer auto-save tetap jalan jika loncat sambil maju
+      autoSaveTimer += delta;
+      if (autoSaveTimer > 1.0) {
+        saveGame();
+        autoSaveTimer = 0;
+      }
+    } else {
+      // Loncat di tempat
+      autoSaveTimer = 0;
+    }
+  } else if (isMoving) {
+    // Prioritas 2: Sedang Bergerak di Tanah (TETAP SAMA LOGIKANYA, HANYA ANIMASI SMOOTH)
+
     // Cek apakah Lari
     if (isRunning && state.stamina > 0) {
       // MODE LARI
       currentSpeed = RUN_SPEED;
-      state.stamina -= 10 * delta;
-      staminaRegenTimer = 2.0;
+      state.stamina -= 1 * delta; // Kurangi stamina
+      staminaRegenTimer = 2.0; // Tunda regen
 
-      // ANIMASI & EFEK
-      if (actions["Run"]) actions["Run"].timeScale = 2.0;
+      // --- FIX BUG LARI MIRING (DIHAPUS player.rotation.x = 0.2) ---
+      // player.rotation.x = 0.2; // Hapus condong ke depan
+
+      // Smooth Animation (Mulai blend ke lari)
+      if (actions["Run"]) {
+        fadeAnimation(actions["Run"], 0.2);
+        actions["Run"].timeScale = 2.0; // Animasi cepat
+      }
+
       if (Math.random() < 0.1) createDust(player.position);
-      player.rotation.x = 0.2;
 
-      // AUDIO: Matikan Jalan, Nyalakan Lari
+      // Logic Audio Lari
       if (!isSFXMuted) {
-        if (walkAudio && !walkAudio.paused) {
-          walkAudio.pause();
-          walkAudio.currentTime = 0;
-        }
+        if (walkAudio && !walkAudio.paused) walkAudio.pause();
         if (runAudio && runAudio.paused) runAudio.play().catch(() => {});
+      } else {
+        if (walkAudio) walkAudio.pause();
+        if (runAudio) runAudio.pause();
       }
     } else {
-      // MODE JALAN (Atau habis stamina)
-      if (isRunning) {
+      // MODE JALAN BIASA (Atau habis stamina)
+      if (isRunning && state.stamina <= 0) {
         isRunning = false;
         showToast("Lelah... Butuh istirahat!", "error");
       }
       currentSpeed = WALK_SPEED;
 
-      // ANIMASI & EFEK
-      if (actions["Run"]) actions["Run"].timeScale = 1.0;
-      player.rotation.x = 0;
-      if (staminaRegenTimer > 0) {
-        staminaRegenTimer -= delta;
-      } else {
-        // Jika stamina belum penuh
-        if (state.stamina < state.maxStamina) {
-          // Tentukan kecepatan regen
-          // Jika Jalan (Moving tapi tidak Running): Regen lambat (2 per detik)
-          // Jika Diam (!Moving): Regen cepat (8 per detik)
-          const regenRate = isMoving ? 2.0 : 8.0;
-
-          state.stamina += regenRate * delta;
-        }
+      // Smooth Animation (Mulai blend ke lari, tapi timeScale normal)
+      if (actions["Run"]) {
+        fadeAnimation(actions["Run"], 0.2);
+        actions["Run"].timeScale = 1.0; // Animasi jalan normal
       }
+      player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, 0, 0.2); // Badan tegak perlahan
 
-      // AUDIO: Matikan Lari, Nyalakan Jalan
+      // Logic Audio Jalan
       if (!isSFXMuted) {
-        if (runAudio && !runAudio.paused) {
-          runAudio.pause();
-          runAudio.currentTime = 0;
-        }
+        if (runAudio && !runAudio.paused) runAudio.pause();
         if (walkAudio && walkAudio.paused) walkAudio.play().catch(() => {});
+      } else {
+        if (walkAudio) walkAudio.pause();
+        if (runAudio) runAudio.pause();
       }
     }
-    autoSaveTimer += delta;
 
-    // Jika sudah bergerak selama 1 detik, simpan game
+    // Auto Save saat bergerak
+    autoSaveTimer += delta;
     if (autoSaveTimer > 1.0) {
-      saveGame(); // Simpan posisi
-      autoSaveTimer = 0; // Reset timer
+      saveGame();
+      autoSaveTimer = 0;
     }
   } else {
-    // DIAM (Matikan Semua Audio Langkah)
+    // Prioritas 3: Diam di Tanah
+
+    // Smooth Animation (Mulai blend ke Idle)
+    if (actions["Idle"]) {
+      fadeAnimation(actions["Idle"], 0.3); // Blending agak lambat agar smooth ke diam
+      if (actions["Run"]) actions["Run"].timeScale = 1.0;
+    }
+    player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, 0, 0.2); // Badan tegak perlahan
+
+    // Matikan Suara Langkah
     if (walkAudio && !walkAudio.paused) {
       walkAudio.pause();
       walkAudio.currentTime = 0;
@@ -1060,35 +1118,37 @@ function update(delta) {
       runAudio.currentTime = 0;
     }
 
-    if (actions["Run"]) actions["Run"].timeScale = 1.0;
-    player.rotation.x = 0;
+    autoSaveTimer = 0;
 
     // Regen Stamina
-    if (staminaRegenTimer > 0) {
-      staminaRegenTimer -= delta;
-    } else {
-      if (state.stamina < state.maxStamina) {
-        state.stamina += 5 * delta;
-      }
-    }
-    autoSaveTimer = 0;
+    if (staminaRegenTimer > 0) staminaRegenTimer -= delta;
+    else if (state.stamina < state.maxStamina) state.stamina += 5 * delta;
   }
 
-  // Batas Stamina
+  // Batas Stamina (TETAP)
   if (state.stamina < 0) state.stamina = 0;
   if (state.stamina > state.maxStamina) state.stamina = state.maxStamina;
   updateStaminaUI();
 
-  // --- 4. FISIKA GERAK ---
+  // --- 4. PERHITUNGAN POSISI & TABRAKAN (FIXED SMOOTH ROTATION Y) ---
   const speed = currentSpeed * delta;
   if (!state.isChopping) {
     if (isMoving) {
       const inputAngle = Math.atan2(dx, dz);
       const targetAngle = inputAngle + cameraAngle;
+
       const nextX = player.position.x + Math.sin(targetAngle) * speed;
       const nextZ = player.position.z + Math.cos(targetAngle) * speed;
-      player.rotation.y = targetAngle;
 
+      let angleDiff = targetAngle - player.rotation.y;
+
+      // Normalisasi selisih agar selalu antara -PI dan +PI
+      // Ini memaksa karakter memilih putaran terdekat (kiri atau kanan)
+      while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+      while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+      // Terapkan rotasi halus berdasarkan selisih terpendek
+      player.rotation.y += angleDiff * 0.15; // 0.15 adalah kecepatan putar (semakin besar semakin cepat)
       const distFromCenter = Math.sqrt(nextX * nextX + nextZ * nextZ);
       if (distFromCenter < MAP_RADIUS_COLLISION) {
         if (!checkCollision(nextX, nextZ)) {
@@ -1100,67 +1160,52 @@ function update(delta) {
         player.position.x = Math.cos(angle) * (MAP_RADIUS_COLLISION - 0.5);
         player.position.z = Math.sin(angle) * (MAP_RADIUS_COLLISION - 0.5);
       }
-
-      if (activeAction !== actions["Run"] && actions["Run"]) {
-        activeAction.fadeOut(0.2);
-        actions["Run"].reset().fadeIn(0.2).play();
-        activeAction = actions["Run"];
-      }
+      // Animasi sudah di-handle di blok prioritasi di atas.
     } else {
-      if (activeAction !== actions["Idle"] && actions["Idle"]) {
-        activeAction.fadeOut(0.2);
-        actions["Idle"].reset().fadeIn(0.2).play();
-        activeAction = actions["Idle"];
-      }
+      // Animasi sudah di-handle di blok prioritasi di atas.
     }
   }
 
-  // --- 5. KAMERA (UPDATE: Deteksi Landscape & Zoom Lebih Dekat) ---
+  // --- 5. KAMERA (TETAP) ---
+  // ... (Kamera logic tetap sama) ...
   const isLandscape = window.innerWidth > window.innerHeight;
-
-  // Jika Landscape: Jarak 13 & Tinggi 11 (Lebih dekat)
-  // Jika Potret: Jarak 16 & Tinggi 14 (Default lama)
   const baseDist = isLandscape ? 10 : 16;
   const baseHeight = isLandscape ? 8 : 14;
-
-  const minPitch = -baseHeight + 2; // Batas bawah (biar tidak tembus tanah)
-  const maxPitch = 20; // Batas atas (langit)
-
-  // Clamp pitch
+  const minPitch = -baseHeight + 2;
+  const maxPitch = 20;
   cameraPitch = Math.max(minPitch, Math.min(maxPitch, cameraPitch));
-
-  const totalHeight = baseHeight + cameraPitch; // Tinggi akhir
-  // ------------------------------------------
-
+  const totalHeight = baseHeight + cameraPitch;
   const offsetX = Math.sin(cameraAngle) * baseDist * cameraZoom;
   const offsetZ = Math.cos(cameraAngle) * baseDist * cameraZoom;
-  const offsetY = totalHeight * cameraZoom; // Gunakan totalHeight yang baru
-
+  const offsetY = totalHeight * cameraZoom;
   const camTarget = new THREE.Vector3(
     player.position.x + offsetX,
     player.position.y + offsetY,
     player.position.z + offsetZ
   );
-
   camera.position.lerp(camTarget, 0.08);
   camera.lookAt(player.position.x, 0, player.position.z);
 
-  // --- LOGIKA SEMBUNYI DI RUMPUT ---
+  // === MENGEMBALIKAN FITUR SEMBUNYI DI RUMPUT ===
   let isHiding = false;
-  for (let g of grasses) {
-    if (player.position.distanceTo(g.position) < 1.5) {
-      // Jarak dekat
-      isHiding = true;
-      break;
+  // Pastikan array grasses ada isinya
+  if (typeof grasses !== "undefined" && grasses.length > 0) {
+    for (let g of grasses) {
+      // Jarak deteksi sembunyi
+      if (player.position.distanceTo(g.position) < 1.5) {
+        isHiding = true;
+        break;
+      }
     }
   }
 
-  // Ubah opacity player jika sembunyi
+  // Efek Transparan pada Player
   player.traverse((child) => {
     if (child.isMesh && child.material) {
       child.material.transparent = true;
-      // Jika sembunyi jadi transparan (0.5), jika tidak kembali normal (1.0)
+      // Jika sembunyi opacity 0.5, jika tidak 1.0
       const targetOp = isHiding ? 0.5 : 1.0;
+      // Gunakan lerp agar perubahan transparansi halus
       child.material.opacity = THREE.MathUtils.lerp(
         child.material.opacity,
         targetOp,
@@ -1168,8 +1213,9 @@ function update(delta) {
       );
     }
   });
+  // ==============================================
 
-  // --- 6. UPDATE LAIN ---
+  // --- 6. UPDATE LAIN (TETAP) ---
   checkInteractions();
   updateMinimap();
   updateTreeHPBar();
@@ -1269,48 +1315,95 @@ function jump() {
   }
 }
 
-// GANTI FUNCTION checkInteractions SEPENUHNYA
 function checkInteractions() {
-  const chopBtn = document.getElementById("action-btn");
-  const sleepBtn = document.getElementById("sleep-btn");
+  if (!player) return;
 
-  state.nearShop =
-    player.position.distanceTo(shopArea.position) < INTERACTION_RADII.shop;
-  state.nearHome =
-    player.position.distanceTo(homeArea.position) < INTERACTION_RADII.home;
+  // 1. Cek Interaksi Pohon
+  let foundTree = null;
 
-  // LOGIKA BARU: Cari pohon terdekat yang masuk dalam interactionRadius-nya sendiri
-  let closestTree = null;
-  let closestDist = Infinity;
+  for (let t of trees) {
+    if (t.userData.hp <= 0) continue;
 
-  trees.forEach((t) => {
-    const d = player.position.distanceTo(t.position);
-    // Ambil jarak interaksi khusus pohon itu (atau default 5.0)
-    const range = t.userData.interactionRadius || 5.0;
+    const dist = player.position.distanceTo(t.position);
 
-    // Jika jarak pemain < jarak interaksi pohon tersebut
-    if (d < range && d < closestDist) {
-      closestDist = d;
-      closestTree = t;
+    // PERBAIKAN: Gunakan radius interaksi spesifik dari userData pohon tersebut
+    // Jika tidak ada, fallback ke radius standar
+    const interactDist = t.userData.interactionRadius || 4.0;
+
+    if (dist < interactDist) {
+      // Hitung Sudut Hadap (Dot Product)
+      const playerDirX = Math.sin(player.rotation.y);
+      const playerDirZ = Math.cos(player.rotation.y);
+      const toTreeX = t.position.x - player.position.x;
+      const toTreeZ = t.position.z - player.position.z;
+
+      const normTreeX = toTreeX / dist;
+      const normTreeZ = toTreeZ / dist;
+      const dotProduct = playerDirX * normTreeX + playerDirZ * normTreeZ;
+
+      // Toleransi sudut (semakin kecil angka, semakin lebar sudut deteksinya)
+      // 0.0 = 180 derajat (depan karakter)
+      if (dotProduct > 0.7) {
+        foundTree = t;
+        break;
+      }
     }
-  });
+  }
 
-  state.nearTree = closestTree;
+  state.nearTree = foundTree;
 
-  // UI Button Logic
-  chopBtn.classList.add("hidden");
-  sleepBtn.classList.add("hidden");
+  // 2. LOGIKA TOMBOL (DIPERBAIKI ID-NYA)
+  const actionBtn = document.getElementById("action-btn");
+  const shopBtn = document.getElementById("btn-shop"); // Pastikan ID ini ada di HTML jika dipakai
+  const sleepBtn = document.getElementById("btn-sleep"); // Pastikan ID ini ada di HTML jika dipakai
 
-  if (state.nearShop) {
-    chopBtn.classList.remove("hidden");
-    chopBtn.innerHTML = "💰";
-    chopBtn.style.background = "linear-gradient(135deg, #f1c40f, #f39c12)";
-  } else if (state.nearTree) {
-    chopBtn.classList.remove("hidden");
-    chopBtn.innerHTML = "🪓";
-    chopBtn.style.background = "linear-gradient(135deg, #e67e22, #d35400)";
-  } else if (state.nearHome && state.isNight) {
-    sleepBtn.classList.remove("hidden");
+  if (actionBtn) {
+    // Reset state tombol
+    let showAction = false;
+    let icon = "";
+    let actionFunc = null;
+
+    // Prioritas 1: Toko
+    const distShop = player.position.distanceTo(shopArea.position);
+    if (distShop < INTERACTION_RADII.shop) {
+      state.nearShop = true;
+      showAction = true;
+      icon = "🛒"; // Icon Toko
+      actionFunc = openShop;
+    } else {
+      state.nearShop = false;
+    }
+
+    // Prioritas 2: Pohon (Jika tidak dekat toko)
+    if (!showAction && state.nearTree) {
+      showAction = true;
+      icon = "🪓"; // Icon Kapak
+      actionFunc = () => performChop(state.nearTree);
+    }
+
+    // Terapkan ke tombol
+    if (showAction) {
+      actionBtn.classList.remove("hidden");
+      actionBtn.classList.add("animate-bounce");
+      actionBtn.innerText = icon;
+
+      // Update handler klik secara dinamis
+      actionBtn.onclick = actionFunc;
+    } else {
+      // Cek interaksi rumah terpisah karena tombolnya beda (btn-sleep)
+      actionBtn.classList.add("hidden");
+      actionBtn.classList.remove("animate-bounce");
+    }
+  }
+
+  // 3. Cek Interaksi Rumah (Tombol Tidur Terpisah)
+  if (sleepBtn) {
+    const distHome = player.position.distanceTo(homeArea.position);
+    if (distHome < INTERACTION_RADII.home) {
+      sleepBtn.classList.remove("hidden");
+    } else {
+      sleepBtn.classList.add("hidden");
+    }
   }
 }
 
@@ -1410,41 +1503,110 @@ function showDamage(pos, amount) {
 }
 
 function openShop() {
-  // Update Data Teks
+  // Update Data Teks (TETAP SAMA)
   document.getElementById("shop-stock").innerText = state.wood;
   document.getElementById("axe-lvl").innerText = state.axeLevel;
   document.getElementById("axe-dmg").innerText = state.axeDamage;
   document.getElementById("max-stamina-disp").innerText = state.maxStamina;
+  document.getElementById("axe-lvl-next").innerText = state.axeLevel + 1;
+  document.getElementById("axe-dmg-next").innerText = state.axeDamage + 1;
+  document.getElementById("upgrade-cost").innerText = state.axeLevel * 50;
+  document.getElementById("stamina-cost").innerText =
+    100 + (state.maxStamina - 100) * 2;
 
-  // --- UPDATE: Ganti Gambar Kapak Sesuai Level ---
+  // Update Visual Kapak Sesuai Level Saat Ini (TETAP SAMA LOGIKANYA)
   const imgEl = document.getElementById("shop-axe-current-img");
   if (imgEl) {
-    // Pastikan Anda punya gambar: kapak.png, kapakup.png, kapak3.png di folder assets
     if (state.axeLevel === 1) imgEl.src = "assets/kapak.png";
     else if (state.axeLevel === 2) imgEl.src = "assets/kapakup.png";
     else if (state.axeLevel >= 3) imgEl.src = "assets/kapak3.png";
   }
-  // ----------------------------------------------
 
-  // Logika Harga & Level Selanjutnya (Tetap sama)
-  const nextLvl = state.axeLevel + 1;
-  const nextDmg = state.axeDamage + 1;
-  const cost = state.axeLevel * 50;
+  // --- TAMBAHAN LOGIKA HANDLE KAPAK MAX (LEVEL 3) ---
+  const upgradeCostSpan = document.getElementById("upgrade-cost");
+  if (upgradeCostSpan) {
+    // Jika sudah level maksimal (Level 3)
+    if (state.axeLevel >= MAX_AXE_LEVEL) {
+      document.getElementById("axe-lvl-next").innerText = "MAX";
+      document.getElementById("axe-dmg-next").innerText = "MAX";
 
-  if (state.axeLevel >= 3) {
-    document.getElementById("axe-lvl-next").innerText = "MAX";
-    document.getElementById("axe-dmg-next").innerText = "MAX";
-    document.getElementById("upgrade-cost").innerText = "-";
-  } else {
-    document.getElementById("axe-lvl-next").innerText = nextLvl;
-    document.getElementById("axe-dmg-next").innerText = nextDmg;
-    document.getElementById("upgrade-cost").innerText = cost;
+      // UPDATE TOMBOL: Ganti koin & harga jadi "MAX"
+      // Kita perlu akses parent untuk manipulasi HTML tombol agar ikon koin hilang
+      const upgradeBtn = upgradeCostSpan.closest("button");
+      if (upgradeBtn) {
+        upgradeBtn.innerHTML = "UPGRADE <br> MAX"; // Ikon koin & span harga hilang murni teks "MAX"
+
+        // Tambahkan style disable visual via Tailwind jika belum ada di CSS
+        upgradeBtn.disabled = true; // Disable fungsional
+        upgradeBtn.classList.remove(
+          "bg-orange-500",
+          "hover:bg-orange-600",
+          "active:scale-95"
+        );
+        upgradeBtn.classList.add("bg-gray-400", "cursor-not-allowed"); // Grayed out & cursor
+      }
+    } else {
+      // Belum Max, pastikan tombol upgrade kembali normal (reset jika pernah MAX)
+      const upgradeBtn = upgradeCostSpan.closest("button");
+      if (upgradeBtn) {
+        // Reset HTML tombol (Pastikan ID upgrade-cost ada lagi)
+        upgradeBtn.innerHTML = `UPGRADE <br><span id="upgrade-cost">${
+          state.axeLevel * 50
+        }</span>💰`;
+
+        upgradeBtn.disabled = false;
+        upgradeBtn.classList.add(
+          "bg-orange-500",
+          "hover:bg-orange-600",
+          "active:scale-95"
+        );
+        upgradeBtn.classList.remove("bg-gray-400", "cursor-not-allowed");
+      }
+    }
   }
+  // ----------------------------------------------------
 
-  document.getElementById("stamina-cost").innerText =
-    100 + (state.maxStamina - 100) * 2;
-
+  // Buka Modal Toko
   document.getElementById("shop-modal").classList.remove("hidden");
+}
+
+function exitApp() {
+  saveGame(); // Simpan dulu sebelum keluar
+
+  // Cek jika web app terinstal (standalone/TWA)
+  const isStandalone =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    window.navigator.standalone;
+
+  if (isStandalone || "ontouchstart" in window) {
+    // Upayakan keluar jika di mobile terinstal (unreliable)
+    showToast("Menutup game... Terima kasih!", "success");
+
+    // Tunggu toast muncul sebentar
+    setTimeout(() => {
+      if (navigator.app && navigator.app.exitApp) {
+        // Jika didukung cordova/TWA
+        navigator.app.exitApp();
+      } else {
+        // Browser mencoba kembali (tricky di HP)
+        window.close();
+        // Jika di mobile browser biasa, kadang dialihkan ke home atau blank page
+        setTimeout(() => {
+          window.location.href = "about:blank";
+        }, 100);
+      }
+    }, 800);
+  } else {
+    // Di PC Browser Biasa
+    showToast("Gunakan tombol X pada browser untuk menutup tab ini.", "info");
+
+    // Window.close hanya bekerja pada window yang dibuka oleh script.
+    // Browser modern memblokir ini untuk tab utama demi keamanan.
+    // Kita tetap coba, tapi beri notifikasi di PC.
+    setTimeout(() => {
+      window.close();
+    }, 800);
+  }
 }
 
 function closeShop() {
