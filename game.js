@@ -438,6 +438,13 @@ function loadContent() {
     treeModels.type3 = gltf.scene;
     onTreeLoaded();
   });
+
+  // --- TAMBAHAN: PRELOAD SEMUA ASET KAPAK (OFFLINE READY) ---
+  // Kita panggil loader untuk semua level kapak agar file .glb didownload
+  // dan disimpan oleh Service Worker, walaupun belum dipasang ke karakter.
+  loader.load(ASSETS.axe, () => {}); // Preload Kapak Lv 1
+  loader.load(ASSETS.axe2, () => {}); // Preload Kapak Lv 2
+  loader.load(ASSETS.axe3, () => {}); // Preload Kapak Lv 3
 }
 
 // --- AUDIO SYSTEM ---
