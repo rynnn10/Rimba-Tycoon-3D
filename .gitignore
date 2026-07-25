@@ -1,0 +1,26 @@
+# Kit aset Kenney mentah - referensi/cadangan, gak dipakai langsung di game
+# (beberapa file udah di-cherry-pick manual ke DATA GAME/assets/). Berat & gak
+# perlu ikut di-push.
+kenney_coaster-kit/
+kenney_graveyard-kit_5.0/
+kenney_mini-market/
+kenney_pirate-kit/
+kenney_survival-kit/
+
+# Android build artifacts - hasil build, regenerable via gradlew, jangan di-commit.
+android-app/.gradle/
+android-app/app/build/
+android-app/build/
+android-app/local.properties
+android-app/.idea/
+*.iml
+
+# Salinan web di dalam project Android ini di-GENERATE OTOMATIS dari DATA GAME/
+# lewat android-app/sync-web.ps1 - jangan commit, jalankan sync-web.ps1 dulu
+# sebelum build APK (lihat README).
+android-app/app/src/main/assets/
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
